@@ -123,6 +123,9 @@ class ChatBrowserUse(BaseChatModel):
 			from browser_use.llm.views import ChatInvokeUsage
 			usage = ChatInvokeUsage(
 				prompt_tokens=0,
+				prompt_cached_tokens=None,
+				prompt_cache_creation_tokens=None,
+				prompt_image_tokens=None,
 				completion_tokens=0,
 				total_tokens=0
 			)
