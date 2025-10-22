@@ -63,6 +63,10 @@ class OldConfig:
 		return os.getenv('BROWSER_USE_CLOUD_SYNC', str(self.ANONYMIZED_TELEMETRY)).lower()[:1] in 'ty1'
 
 	@property
+	def BROWSER_USE_MODE(self) -> str:
+		return os.getenv('BROWSER_USE_MODE', 'local').lower()
+
+	@property
 	def BROWSER_USE_CLOUD_API_URL(self) -> str:
 		url = os.getenv('BROWSER_USE_CLOUD_API_URL', 'https://api.browser-use.com')
 		assert '://' in url, 'BROWSER_USE_CLOUD_API_URL must be a valid URL'
@@ -189,6 +193,7 @@ class FlatEnvConfig(BaseSettings):
 	BROWSER_USE_INFO_LOG_FILE: str | None = Field(default=None)
 	ANONYMIZED_TELEMETRY: bool = Field(default=True)
 	BROWSER_USE_CLOUD_SYNC: bool | None = Field(default=None)
+	BROWSER_USE_MODE: str = Field(default='local')
 	BROWSER_USE_CLOUD_API_URL: str = Field(default='https://api.browser-use.com')
 	BROWSER_USE_CLOUD_UI_URL: str = Field(default='')
 

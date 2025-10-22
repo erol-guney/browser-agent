@@ -12,6 +12,7 @@ from typing import TypeVar, overload
 import httpx
 from pydantic import BaseModel
 
+from browser_use.config import CONFIG
 from browser_use.llm.base import BaseChatModel
 from browser_use.llm.messages import BaseMessage
 from browser_use.llm.views import ChatInvokeCompletion
@@ -64,7 +65,11 @@ class ChatBrowserUse(BaseChatModel):
 		self.base_url = base_url or os.getenv('BROWSER_USE_LLM_URL', 'https://llm.api.browser-use.com')
 		self.timeout = timeout
 
-		if not self.api_key:
+		# Skip API key check if BROWSER_USE_MODE is set to 'local'
+		if CONFIG.BROWSER_USE_MODE == 'local':
+			logger.info('🌤️ BROWSER_USE_MODE=local detected, skipping API key check for browser-use LLM')
+			self.api_key = 'local-mode-skip'
+		elif not self.api_key:
 			raise ValueError(
 				'You need to set the BROWSER_USE_API_KEY environment variable. '
 				'Get your key at https://cloud.browser-use.com/dashboard/api'

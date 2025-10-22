@@ -24,7 +24,11 @@ class CloudSync:
 		self.allow_session_events_for_auth = allow_session_events_for_auth
 		self.auth_flow_active = False  # Flag to indicate auth flow is running
 		# Check if cloud sync is actually enabled - if not, we should remain silent
-		self.enabled = CONFIG.BROWSER_USE_CLOUD_SYNC
+		# Also disable if BROWSER_USE_MODE is set to 'local'
+		self.enabled = CONFIG.BROWSER_USE_CLOUD_SYNC and CONFIG.BROWSER_USE_MODE != 'local'
+		
+		if CONFIG.BROWSER_USE_MODE == 'local':
+			logger.info('🌤️ BROWSER_USE_MODE=local detected, disabling cloud sync')
 
 	async def handle_event(self, event: BaseEvent) -> None:
 		"""Handle an event by sending it to the cloud"""

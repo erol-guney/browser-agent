@@ -57,7 +57,7 @@ class TestCloudBrowserClient:
 		}
 
 		# Mock the httpx client
-		with patch('httpx.AsyncClient') as mock_client_class:
+		with patch('httpx.AsyncClient') as mock_client_class, patch.dict('os.environ', {'BROWSER_USE_MODE': 'cloud'}):
 			mock_response = AsyncMock()
 			mock_response.status_code = 201
 			mock_response.is_success = True
@@ -87,7 +87,7 @@ class TestCloudBrowserClient:
 
 		# Don't create auth config - should trigger auth error
 
-		with patch('httpx.AsyncClient') as mock_client_class:
+		with patch('httpx.AsyncClient') as mock_client_class, patch.dict('os.environ', {'BROWSER_USE_MODE': 'cloud'}):
 			mock_client = AsyncMock()
 			mock_client_class.return_value = mock_client
 
@@ -98,6 +98,46 @@ class TestCloudBrowserClient:
 				await client.create_browser()
 
 			assert 'BROWSER_USE_API_KEY environment variable' in str(exc_info.value)
+
+	async def test_create_browser_local_mode(self, temp_config_dir):
+		"""Test cloud browser creation in local mode skips API key check."""
+
+		# Mock response data matching the API
+		mock_response_data = {
+			'id': 'test-browser-id',
+			'status': 'active',
+			'liveUrl': 'https://live.browser-use.com?wss=test',
+			'cdpUrl': 'wss://test.proxy.daytona.works',
+			'timeoutAt': '2025-09-17T04:35:36.049892',
+			'startedAt': '2025-09-17T03:35:36.049974',
+			'finishedAt': None,
+		}
+
+		# Mock the httpx client
+		with patch('httpx.AsyncClient') as mock_client_class, patch.dict('os.environ', {'BROWSER_USE_MODE': 'local'}):
+			mock_response = AsyncMock()
+			mock_response.status_code = 201
+			mock_response.is_success = True
+			mock_response.json = lambda: mock_response_data
+
+			mock_client = AsyncMock()
+			mock_client.post.return_value = mock_response
+			mock_client_class.return_value = mock_client
+
+			client = CloudBrowserClient()
+			client.client = mock_client
+
+			result = await client.create_browser()
+
+			assert result.id == 'test-browser-id'
+			assert result.status == 'active'
+			assert result.cdpUrl == 'wss://test.proxy.daytona.works'
+
+			# Verify auth headers were included with local-mode-skip token
+			mock_client.post.assert_called_once()
+			call_args = mock_client.post.call_args
+			assert 'X-Browser-Use-API-Key' in call_args.kwargs['headers']
+			assert call_args.kwargs['headers']['X-Browser-Use-API-Key'] == 'local-mode-skip'
 
 	async def test_create_browser_http_401(self, mock_auth_config):
 		"""Test cloud browser creation with HTTP 401 response."""
@@ -136,7 +176,7 @@ class TestCloudBrowserClient:
 			'finishedAt': None,
 		}
 
-		with patch('httpx.AsyncClient') as mock_client_class:
+		with patch('httpx.AsyncClient') as mock_client_class, patch.dict('os.environ', {'BROWSER_USE_MODE': 'cloud'}):
 			mock_response = AsyncMock()
 			mock_response.status_code = 201
 			mock_response.is_success = True
@@ -290,7 +330,7 @@ async def test_cloud_browser_auth_error_no_fallback(temp_config_dir):
 	profile = BrowserProfile(use_cloud=True)
 
 	# Test that cloud browser client raises error without fallback
-	with patch('browser_use.browser.cloud.get_cloud_browser_cdp_url') as mock_cloud_cdp:
+	with patch('browser_use.browser.cloud.get_cloud_browser_cdp_url') as mock_cloud_cdp, patch.dict('os.environ', {'BROWSER_USE_MODE': 'cloud'}):
 		mock_cloud_cdp.side_effect = CloudBrowserAuthError('No auth token')
 
 		# Verify that the cloud browser client raises the expected error

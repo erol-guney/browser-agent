@@ -6,6 +6,7 @@ import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import anyio
 import httpx
@@ -346,24 +347,25 @@ class TestCloudSync:
 		auth.auth_config.api_token = 'test-api-key'
 		auth.auth_config.user_id = 'test-user-123'
 
-		service = CloudSync(base_url=httpserver.url_for(''))
-		service.auth_client = auth
-		service.session_id = 'test-session-id'
+		with patch.dict('os.environ', {'BROWSER_USE_MODE': 'cloud'}):
+			service = CloudSync(base_url=httpserver.url_for(''))
+			service.auth_client = auth
+			service.session_id = 'test-session-id'
 
-		# Send event
-		await service.handle_event(
-			CreateAgentTaskEvent(
-				agent_session_id='test-session',
-				llm_model='test-model',
-				task='Test task',
-				user_id='test-user-123',
-				done_output=None,
-				user_feedback_type=None,
-				user_comment=None,
-				gif_url=None,
-				device_id='test-device-id',
+			# Send event
+			await service.handle_event(
+				CreateAgentTaskEvent(
+					agent_session_id='test-session',
+					llm_model='test-model',
+					task='Test task',
+					user_id='test-user-123',
+					done_output=None,
+					user_feedback_type=None,
+					user_comment=None,
+					gif_url=None,
+					device_id='test-device-id',
+				)
 			)
-		)
 
 		# Check request was made
 		assert len(requests) == 1
@@ -379,6 +381,51 @@ class TestCloudSync:
 		assert event['event_type'] == 'CreateAgentTaskEvent'
 		assert event['user_id'] == 'test-user-123'
 		assert event['task'] == 'Test task'
+
+	async def test_send_event_local_mode(self, httpserver: HTTPServer, temp_config_dir):
+		"""Test that events are not sent in local mode."""
+		requests = []
+
+		def capture_request(request):
+			requests.append(
+				{
+					'headers': dict(request.headers),
+					'json': request.get_json(),
+				}
+			)
+			from werkzeug.wrappers import Response
+
+			return Response('{"processed": 1, "failed": 0}', status=200, mimetype='application/json')
+
+		httpserver.expect_request('/api/v1/events', method='POST').respond_with_handler(capture_request)
+
+		# Create authenticated service
+		auth = DeviceAuthClient(base_url=httpserver.url_for(''))
+		auth.auth_config.api_token = 'test-api-key'
+		auth.auth_config.user_id = 'test-user-123'
+
+		with patch.dict('os.environ', {'BROWSER_USE_MODE': 'local'}):
+			service = CloudSync(base_url=httpserver.url_for(''))
+			service.auth_client = auth
+			service.session_id = 'test-session-id'
+
+			# Send event
+			await service.handle_event(
+				CreateAgentTaskEvent(
+					agent_session_id='test-session',
+					llm_model='test-model',
+					task='Test task',
+					user_id='test-user-123',
+					done_output=None,
+					user_feedback_type=None,
+					user_comment=None,
+					gif_url=None,
+					device_id='test-device-id',
+				)
+			)
+
+		# Check no request was made in local mode
+		assert len(requests) == 0
 
 	async def test_send_event_pre_auth(self, httpserver: HTTPServer, temp_config_dir):
 		"""Test that non-session events are not sent when auth is not in progress."""
@@ -444,46 +491,47 @@ class TestCloudSync:
 		auth = DeviceAuthClient(base_url=httpserver.url_for(''))
 		# Start unauthenticated
 
-		service = CloudSync(base_url=httpserver.url_for(''))
-		service.auth_client = auth
-		service.session_id = 'test-session-id'
+		with patch.dict('os.environ', {'BROWSER_USE_MODE': 'cloud'}):
+			service = CloudSync(base_url=httpserver.url_for(''))
+			service.auth_client = auth
+			service.session_id = 'test-session-id'
 
-		# Send pre-auth event (should be skipped)
-		await service.handle_event(
-			CreateAgentTaskEvent(
-				agent_session_id='test-session',
-				llm_model='test-model',
-				task='Pre-auth task',
-				user_id=TEMP_USER_ID,
-				done_output=None,
-				user_feedback_type=None,
-				user_comment=None,
-				gif_url=None,
-				device_id='test-device-id',
+			# Send pre-auth event (should be skipped)
+			await service.handle_event(
+				CreateAgentTaskEvent(
+					agent_session_id='test-session',
+					llm_model='test-model',
+					task='Pre-auth task',
+					user_id=TEMP_USER_ID,
+					done_output=None,
+					user_feedback_type=None,
+					user_comment=None,
+					gif_url=None,
+					device_id='test-device-id',
+				)
 			)
-		)
 
-		# No requests should have been made yet
-		assert len(requests) == 0
+			# No requests should have been made yet
+			assert len(requests) == 0
 
-		# Now authenticate the auth client
-		auth.auth_config.api_token = 'test-api-key'
-		auth.auth_config.user_id = 'test-user-123'
+			# Now authenticate the auth client
+			auth.auth_config.api_token = 'test-api-key'
+			auth.auth_config.user_id = 'test-user-123'
 
-		# Send post-auth event (should be sent)
-		await service.handle_event(
-			CreateAgentTaskEvent(
-				agent_session_id='test-session',
-				llm_model='test-model',
-				task='Post-auth task',
-				user_id='test-user-123',
-				done_output=None,
-				user_feedback_type=None,
-				user_comment=None,
-				gif_url=None,
-				device_id='test-device-id',
+			# Send post-auth event (should be sent)
+			await service.handle_event(
+				CreateAgentTaskEvent(
+					agent_session_id='test-session',
+					llm_model='test-model',
+					task='Post-auth task',
+					user_id='test-user-123',
+					done_output=None,
+					user_feedback_type=None,
+					user_comment=None,
+					gif_url=None,
+					device_id='test-device-id',
+				)
 			)
-		)
 
 		# Now exactly one request should have been made (the post-auth event)
 		assert len(requests) == 1

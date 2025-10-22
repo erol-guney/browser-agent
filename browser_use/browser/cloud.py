@@ -11,6 +11,7 @@ import os
 import httpx
 from pydantic import BaseModel, Field
 
+from browser_use.config import CONFIG
 from browser_use.sync.auth import CloudAuthConfig
 
 logger = logging.getLogger(__name__)
@@ -60,21 +61,26 @@ class CloudBrowserClient:
 		"""
 		url = f'{self.api_base_url}/api/v2/browsers'
 
-		# Try to get API key from environment variable first, then auth config
-		api_token = os.getenv('BROWSER_USE_API_KEY')
+		# Skip API key check if BROWSER_USE_MODE is set to 'local'
+		if CONFIG.BROWSER_USE_MODE == 'local':
+			logger.info('🌤️ BROWSER_USE_MODE=local detected, skipping API key check for cloud browser')
+			api_token = 'local-mode-skip'
+		else:
+			# Try to get API key from environment variable first, then auth config
+			api_token = os.getenv('BROWSER_USE_API_KEY')
 
-		if not api_token:
-			# Fallback to auth config file
-			try:
-				auth_config = CloudAuthConfig.load_from_file()
-				api_token = auth_config.api_token
-			except Exception:
-				pass
+			if not api_token:
+				# Fallback to auth config file
+				try:
+					auth_config = CloudAuthConfig.load_from_file()
+					api_token = auth_config.api_token
+				except Exception:
+					pass
 
-		if not api_token:
-			raise CloudBrowserAuthError(
-				'No authentication token found. Please set BROWSER_USE_API_KEY environment variable to authenticate with the cloud service. You can also create an API key at https://cloud.browser-use.com'
-			)
+			if not api_token:
+				raise CloudBrowserAuthError(
+					'No authentication token found. Please set BROWSER_USE_API_KEY environment variable to authenticate with the cloud service. You can also create an API key at https://cloud.browser-use.com'
+				)
 
 		headers = {'X-Browser-Use-API-Key': api_token, 'Content-Type': 'application/json'}
 
@@ -145,21 +151,26 @@ class CloudBrowserClient:
 
 		url = f'{self.api_base_url}/api/v2/browsers/{session_id}'
 
-		# Try to get API key from environment variable first, then auth config
-		api_token = os.getenv('BROWSER_USE_API_KEY')
+		# Skip API key check if BROWSER_USE_MODE is set to 'local'
+		if CONFIG.BROWSER_USE_MODE == 'local':
+			logger.info('🌤️ BROWSER_USE_MODE=local detected, skipping API key check for cloud browser stop')
+			api_token = 'local-mode-skip'
+		else:
+			# Try to get API key from environment variable first, then auth config
+			api_token = os.getenv('BROWSER_USE_API_KEY')
 
-		if not api_token:
-			# Fallback to auth config file
-			try:
-				auth_config = CloudAuthConfig.load_from_file()
-				api_token = auth_config.api_token
-			except Exception:
-				pass
+			if not api_token:
+				# Fallback to auth config file
+				try:
+					auth_config = CloudAuthConfig.load_from_file()
+					api_token = auth_config.api_token
+				except Exception:
+					pass
 
-		if not api_token:
-			raise CloudBrowserAuthError(
-				'No authentication token found. Please set BROWSER_USE_API_KEY environment variable to authenticate with the cloud service. You can also create an API key at https://cloud.browser-use.com'
-			)
+			if not api_token:
+				raise CloudBrowserAuthError(
+					'No authentication token found. Please set BROWSER_USE_API_KEY environment variable to authenticate with the cloud service. You can also create an API key at https://cloud.browser-use.com'
+				)
 
 		headers = {'X-Browser-Use-API-Key': api_token, 'Content-Type': 'application/json'}
 
