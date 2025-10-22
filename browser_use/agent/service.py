@@ -909,32 +909,37 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			f'✅ Step {self.state.n_steps}: Got LLM response with {len(model_output.action) if model_output.action else 0} actions'
 		)
 
-		if (
-			not model_output.action
-			or not isinstance(model_output.action, list)
-			or all(action.model_dump() == {} for action in model_output.action)
-		):
+		# Check if action is valid before processing
+		if not model_output.action or not isinstance(model_output.action, list):
+			self.logger.warning(f'Model returned invalid action type: {type(model_output.action).__name__}. Retrying...')
+		elif all(hasattr(action, 'model_dump') and action.model_dump() == {} for action in model_output.action):
 			self.logger.warning('Model returned empty action. Retrying...')
+		else:
+			# Actions are valid, continue normally
+			return model_output
 
-			clarification_message = UserMessage(
-				content='You forgot to return an action. Please respond with a valid JSON action according to the expected schema with your assessment and next actions.'
-			)
+		# If we get here, we need to retry
+		clarification_message = UserMessage(
+			content='You forgot to return an action. Please respond with a valid JSON action according to the expected schema with your assessment and next actions.'
+		)
 
-			retry_messages = input_messages + [clarification_message]
-			model_output = await self.get_model_output(retry_messages)
+		retry_messages = input_messages + [clarification_message]
+		model_output = await self.get_model_output(retry_messages)
 
-			if not model_output.action or all(action.model_dump() == {} for action in model_output.action):
-				self.logger.warning('Model still returned empty after retry. Inserting safe noop action.')
-				action_instance = self.ActionModel()
-				setattr(
-					action_instance,
-					'done',
-					{
-						'success': False,
-						'text': 'No next action returned by LLM!',
-					},
-				)
-				model_output.action = [action_instance]
+		# Check retry result with proper validation
+		if not model_output.action or not isinstance(model_output.action, list):
+			self.logger.warning(f'Model still returned invalid action type after retry: {type(model_output.action).__name__}. Inserting safe noop action.')
+		elif all(hasattr(action, 'model_dump') and action.model_dump() == {} for action in model_output.action):
+			self.logger.warning('Model still returned empty after retry. Inserting safe noop action.')
+		else:
+			# Actions are valid after retry, return them
+			return model_output
+
+		# If we get here, we need to insert a safe noop action
+		from browser_use.tools.views import DoneAction
+		done_action = DoneAction(success=False, text='No next action returned by LLM!')
+		action_instance = self.ActionModel(done=done_action)
+		model_output.action = [action_instance]
 
 		return model_output
 
@@ -1647,6 +1652,23 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 	@time_execution_async('--multi_act')
 	async def multi_act(self, actions: list[ActionModel]) -> list[ActionResult]:
 		"""Execute multiple actions"""
+		# Validate that actions is actually a list and contains valid ActionModel objects
+		if not isinstance(actions, list):
+			error_msg = f"Expected actions to be a list, but got {type(actions).__name__}: {actions}"
+			self.logger.error(f"❌ {error_msg}")
+			return [ActionResult(error=error_msg)]
+		
+		# Check if any action is not an ActionModel object
+		invalid_actions = []
+		for i, action in enumerate(actions):
+			if not hasattr(action, 'model_dump'):
+				invalid_actions.append(f"Action {i}: {type(action).__name__} - {action}")
+		
+		if invalid_actions:
+			error_msg = f"Invalid actions detected: {'; '.join(invalid_actions)}"
+			self.logger.error(f"❌ {error_msg}")
+			return [ActionResult(error=error_msg)]
+		
 		results: list[ActionResult] = []
 		time_elapsed = 0
 		total_actions = len(actions)

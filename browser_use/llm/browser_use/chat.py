@@ -108,16 +108,32 @@ class ChatBrowserUse(BaseChatModel):
 			logger.info('🌤️ BROWSER_USE_MODE=local detected, bypassing API call')
 			# Return a mock response for local mode
 			# This allows the agent to continue without making actual API calls
-			mock_completion = "Local mode: Browser automation task completed"
 			if output_format is not None:
-				# Try to create a basic instance of the output format
+				# Create a proper mock response based on the output format
 				try:
-					completion = output_format.model_validate({"content": mock_completion})
-				except Exception:
-					# If validation fails, return the string directly
-					completion = mock_completion
+					# Check if this is an AgentOutput format
+					if hasattr(output_format, 'model_fields') and 'action' in output_format.model_fields:
+						# Create a mock AgentOutput with a done action
+						from browser_use.tools.views import DoneAction
+						done_action = DoneAction(success=True, text="Local mode: Task completed")
+						from browser_use.agent.views import ActionModel
+						action_instance = ActionModel(done=done_action)
+						
+						completion = output_format.model_validate({
+							"evaluation_previous_goal": "Local mode evaluation",
+							"memory": "Local mode memory",
+							"next_goal": "Local mode next goal", 
+							"action": [action_instance]
+						})
+					else:
+						# For other output formats, try basic validation
+						completion = output_format.model_validate({"content": "Local mode: Browser automation task completed"})
+				except Exception as e:
+					logger.warning(f"Failed to create mock response for output format: {e}")
+					# Fallback to string response
+					completion = "Local mode: Browser automation task completed"
 			else:
-				completion = mock_completion
+				completion = "Local mode: Browser automation task completed"
 			
 			# Create mock usage info
 			from browser_use.llm.views import ChatInvokeUsage
@@ -197,6 +213,15 @@ class ChatBrowserUse(BaseChatModel):
 				# llm-use returns dicts to avoid validation with empty ActionModel
 				if isinstance(completion_data, dict) and 'action' in completion_data:
 					actions = completion_data['action']
+					
+					# Handle case where actions is a string (should be a list)
+					if isinstance(actions, str):
+						logger.warning(f"LLM returned string action '{actions}' instead of list. This may cause issues.")
+						# Convert string to a list with a single action
+						# This is a fallback - ideally the LLM should return proper structured data
+						completion_data['action'] = [actions]
+						actions = completion_data['action']
+					
 					if actions and isinstance(actions[0], dict):
 						from typing import get_args
 
